@@ -1,17 +1,33 @@
-# BMIN5030 Final Project
+# Predictive Modeling of Patient Satisfaction: An NLP Analysis of Drug Reviews
 
-This repository contains templates for the final written report and GitHub repository. Follow the instructions below to clone this repository, and then turn in your final project's code via a pull request to this repository.
+**Author:** [Your Name]
+**Course:** BMIN 503 - Biomedical Data Science
 
-1. To start, **fork** this BMIN503_Final_Project repository.
-1. **Clone** the forked repository to your computer.
-1. Modify the files provided, add your own, and **commit** changes to complete your final project.
-1. **Push**/sync the changes up to your GitHub account.
-1. Create a **pull request** on this, the original BMIN503_Final_Project, repository to turn in your final project.
+## Research Question
+**Can we predict treatment satisfaction and identify the determinants of discontinuation based solely on unstructured patient narratives?**
 
+This project applies Natural Language Processing (NLP) to extract adverse event signals from text and uses Machine Learning to predict whether a patient will be satisfied with their medication.
 
-Follow the instructions [here][forking] if you are unsure what the above steps mean.
+## Project Files
+This repository contains the complete analysis and source code:
+* **drug_analysis.html**: The rendered report containing all code, visualizations, and commentary. (View this file first)
+* **drug_analysis.qmd**: The source Quarto document with the R code.
+* **drugLibTrain_raw.tsv** / **drugLibTest_raw.tsv**: The source datasets.
 
-DUE DATE FOR FINAL VERSION: 12/12/25 11:59PM EST. This is a hard deadline. Turn in whatever you have by this date.
+## Dataset
+**Source:** drugLib Database (n ~ 4,000)
+* Selected for its semi-structured format which explicitly separates "Side Effects" text from "Benefits" text.
+* The sample size exceeds typical FDA Phase III Clinical Trial enrollment, providing robust statistical power for signal detection.
+
+## Methodology
+1.  **Data Processing:** Merged training/testing splits and handled missing categorical values.
+2.  **Exploratory Analysis (EDA):** Visualized the "Efficacy-Safety Trade-off" to identify a high-risk cluster of patients reporting high efficacy but severe side effects.
+3.  **Natural Language Processing (NLP):** Implemented a tokenization pipeline with a Domain-Specific Stop-Word Filter to remove noise (e.g., "pill", "dosage") and isolate true clinical symptoms.
+4.  **Machine Learning:** Trained a Logistic Regression Classifier to predict "Satisfaction" (Rating >= 8) based on a calculated clinical sentiment score.
+5.  **Evaluation:** Validated model performance using an ROC Curve (AUC analysis).
+
+## Key Findings
+The analysis reveals that "Lifestyle Burdens" (e.g., Nausea, Weight Gain, Libido) are the dominant drivers of negative sentiment. The model successfully discriminates between satisfied and unsatisfied patients based on these specific text features.
 
 
 <!-- Links -->
