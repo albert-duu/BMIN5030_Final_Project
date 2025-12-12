@@ -1,6 +1,7 @@
 # Predictive Modeling of Patient Satisfaction: An NLP Analysis of Drug Reviews
 
 **Author:** Xiyuan Du
+
 **Course:** BMIN 5030 
 
 ## Research Question
