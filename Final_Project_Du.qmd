@@ -1,0 +1,274 @@
+---
+title: "Mining Patient Narratives: An NLP & Machine Learning Analysis of Drug Reviews"
+subtitle: "BMIN5030 Final Project"
+author: "Xiyuan Du"
+format: html
+editor: visual
+number-sections: true
+embed-resources: true
+---
+
+------------------------------------------------------------------------
+
+## Overview
+
+**Project Goal:** The primary objective of this project is to bridge the gap between clinical efficacy and patient adherence. While clinical trials measure biological success, they often miss the subjective "quality of life" factors that cause patients to stop taking medication in the real world. By applying Natural Language Processing (NLP) and Machine Learning to unstructured patient reviews, this project aims to automatically extract adverse event signals and predict patient satisfaction.
+
+**Motivation:** Psychotropic medications often exhibit a significant mismatch between their efficacy in controlled trials and their effectiveness in real-world use. This phenomenon, known as the efficacy-effectiveness gap, is driven largely by patient non-adherence. Understanding the nuanced reasons why patients discontinue medication requires scalable computational methods capable of extracting structure from unstructured text.
+
+**Data Source:** The analysis utilizes the **`drugLib` database**, a dataset of approximately 4,000 patient reviews sourced from the UCI Machine Learning Repository. This dataset was specifically selected because it is semi-structured: unlike standard web-scraped data, it separates "Side Effects" text from "Benefits" text, allowing for precise feature engineering.
+
+**Faculty Consultations:**
+
+1.  **\[Prof. Fuchiang Tsui\]**: We discussed the concept of "Real World Evidence". I learned that in Drug safety surveillance, patient-reported outcomes on social platforms often detect side effects months before official FDA warnings.
+
+2.  **\[Prof. Dokyoon Kim\]**: We discussed text mining strategies. I learned about the importance of domain-specific stop-word removal—specifically, that standard NLP libraries often fail on medical text because they don't treat words like "pill" or "dosage" as noise.\
+
+**Analytic Strategy:**
+
+-   Use NLP preprocessing to clean and tokenize text, removing noise and standardizing linguistic features.
+
+-   Apply sentiment analysis and lexicon-derived categorical features (e.g., symptom terms, emotional vocabulary).
+
+-   Train regression and classification models to identify which linguistic, clinical, or demographic factors predict patient discontinuation or dissatisfaction.
+
+-   Evaluate model performance and interpret the role of narrative structure via effect sizes, feature importance, and regression coefficients.
+
+**Key Deliverable**: A reproducible analytical workflow integrating data cleaning, linguistic engineering, statistical modeling, and visualization, demonstrating how patient voices can be transformed into quantifiable signals relevant for clinical decision-making and digital phenotyping.
+
+**GitHub Repository:**
+
+https://github.com/albert-duu/BMIN5030_Final_Project/tree/master
+
+## Introduction
+
+### The Problem: The Efficacy-Effectiveness Gap
+
+Medication non-adherence is a massive public health challenge, costing the U.S. healthcare system billions of dollars annually and leading to preventable morbidity and hospitalization. A major driver of non-adherence is the **“efficacy–effectiveness gap”**: a drug may be pharmacologically effective at controlling a disease, but if it produces lifestyle-disrupting side effects (for example, insomnia, weight gain, or brain fog), patients often discontinue therapy despite clinical benefit. Understanding which side effects matter most to patients, and how strongly they influence overall satisfaction, is therefore essential for designing safer treatment plans and for proactively managing chronic therapy.
+
+### Significance & Background
+
+Traditionally, analyzing this data requires manual review by clinicians, which is unscalable. However, patients generate millions of data points daily in the form of online reviews. These narratives contain rich, unstructured data about their experiences.
+
+The challenge is that this data is "noisy." Patients use colloquialisms ("I felt spaced out") rather than medical terms ("somnolence"). To make use of this data, we need computational methods that can translate human language into quantitative features.
+
+In this project, we analyze 4,143 patient drug reviews from the DrugLib corpus to address two concrete questions:
+
+1.  **Descriptive:** Which symptom terms and lifestyle-related side effects dominate patient narratives across chronic conditions?
+2.  **Predictive:** To what extent can a simple lexicon-based sentiment score derived from side-effect narratives predict high overall treatment satisfaction?
+
+To answer these questions, we apply Natural Language Processing (NLP) for tokenization and feature engineering, followed by supervised machine learning (logistic regression) with performance evaluated using ROC curves and the Area Under the Curve (AUC).
+
+### Interdisciplinary Approach
+
+This project operates at the intersection of two fields:
+
+1.  Biomedical Informatics: It requires understanding the clinical context of chronic disease management and the specific vocabulary of adverse events.
+
+2.  Data Science: It utilizes Natural Language Processing (NLP) for tokenization and Supervised Machine Learning (Logistic Regression) for predictive modeling.
+
+By combining these disciplines, we build a reproducible pipeline that listens to the “voice of the patient” at scale: transforming free-text narratives into structured features, training predictive models of satisfaction, and interpreting which specific side-effect terms carry the greatest weight in chronic care.
+
+## Methods
+
+### Computational Environment
+
+The analysis was performed using the R statistical programming language. We utilized the `tidyverse` ecosystem for data manipulation and the `tidytext` package for NLP. This approach ensures that our text processing follows "tidy data" principles (one token per row), which simplifies the integration of text data with statistical modeling tools.
+
+```{r}
+# Load the Core Libraries
+suppressPackageStartupMessages({
+  library(tidyverse)    # For data manipulation and plotting
+  library(tidytext)     # For NLP (unnest_tokens)
+  library(wordcloud)    # For visualization
+  library(RColorBrewer) # For color palettes
+  library(pROC)         # For Model Evaluation
+})
+```
+
+### Data Acquisition and Cleaning
+
+We ingested the raw tab-separated value (TSV) files containing the provided training and test sets, then vertically concatenated them into a single analysis dataset. This merge increases statistical power and simplifies downstream modeling, because both splits share the same schema. After loading, we performed basic data integrity checks: confirming the expected number of rows and columns, verifying that all review text fields (\`benefitsReview\`, \`sideEffectsReview\`, \`commentsReview\`) are present, and inspecting the distributions of \`rating\`, \`effectiveness\`, and \`sideEffects\` to identify obvious anomalies or impossible values. Because the file is relatively well curated and the free-text fields are densely populated, no rows were dropped at this stage; instead, we documented the raw structure of the dataset and proceeded to feature engineering.
+
+```{R}
+# 1. Ingest raw train and test TSV files
+train_df <- read_tsv("drugLibTrain_raw.tsv", show_col_types = FALSE)
+test_df  <- read_tsv("drugLibTest_raw.tsv",  show_col_types = FALSE)
+
+# 2. Merge into a single analysis dataset
+df <- bind_rows(train_df, test_df)
+
+# 3. Basic integrity checks: size and schema
+message("Total patient reviews analyzed: ", nrow(df))
+glimpse(df)   # Verify column names, types, and presence of text fields
+```
+
+### NLP Strategy: Tokenization & Filtering
+
+The core of our methodology is **Feature Engineering via NLP**. We cannot feed raw sentences into a statistical model. Instead, we used a "Bag-of-Words" approach:
+
+Tokenization: We used `unnest_tokens()` to break reviews down into individual words.
+
+Filtering: This is the most distinct part of our method. Standard "stop word" lists remove words like "the" and "and." However, medical text contains domain-specific noise (e.g., "pill," "doctor," "prescribed"). We created a custom exclusion list to remove these terms so that only true clinical symptoms remained.
+
+## Results
+
+### The Patient Landscape (Class Imbalance)
+
+First, we visualized the distribution of medical conditions in the dataset. This step is crucial for understanding the bias in our model.
+
+```{r}
+df %>%
+  count(condition, sort = TRUE) %>%
+  top_n(10, n) %>%
+  ggplot(aes(x = reorder(condition, n), y = n)) +
+  geom_col(fill = "#2c3e50") +
+  coord_flip() +
+  labs(title = "Top 10 Medical Conditions Analyzed",
+       subtitle = "The dataset is dominated by chronic conditions",
+       x = NULL, y = "Number of Patient Reviews") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+**Interpretation**: The data is heavily skewed toward Depression, Anxiety, and Hypertension. This indicates that our analysis effectively models a population managing chronic conditions. These patients take medication daily, making them highly sensitive to "quality of life" side effects.
+
+### The Efficacy-Safety Trade-off
+
+We investigated whether high drug efficacy guarantees patient satisfaction. We plotted a heatmap comparing reported Effectiveness against Side Effect Severity.
+
+```{r}
+# Define logical order for factors (Low -> High)
+effectiveness_order <- c("Ineffective", "Marginally Effective", "Moderately Effective", 
+                         "Considerably Effective", "Highly Effective")
+side_effect_order <- c("No Side Effects", "Mild Side Effects", "Moderate Side Effects", 
+                       "Severe Side Effects", "Extremely Severe Side Effects")
+
+# Create Heatmap
+df %>%
+  filter(!is.na(effectiveness), !is.na(sideEffects)) %>%
+  mutate(
+    effectiveness = factor(effectiveness, levels = effectiveness_order),
+    sideEffects = factor(sideEffects, levels = side_effect_order)
+  ) %>%
+  count(effectiveness, sideEffects) %>%
+  ggplot(aes(x = effectiveness, y = sideEffects, fill = n)) +
+  geom_tile(color = "white", linewidth = 1.2) + 
+  scale_fill_gradient(low = "#fce4ec", high = "#880e4f") +
+  labs(title = "Efficacy vs. Side Effect Severity",
+       subtitle = "Heatmap of Patient Experiences",
+       x = "Effectiveness", y = "Side Effects", fill = "Count") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+**Interpretation**: While many patients fall into the ideal "High Efficacy / No Side Effects" category (bottom right), there is a significant cluster in the Top Right Quadrant. These are patients reporting that the drug is "Highly Effective" but causes "Severe Side Effects." In a clinical setting, these patients are at high risk of discontinuation despite the drug "working."
+
+### Extracting the Clinical Signal
+
+To understand what side effects are driving these negative experiences, we applied our NLP pipeline. The word cloud below represents the most frequent terms after removing non-clinical noise.
+
+```{r}
+# Define Custom Ignore List (Domain-Specific Stop Words)
+custom_ignore_words <- c(
+  "drug", "drugs", "effect", "effects", "side", "taking", 
+  "day", "days", "time", "medication", "medicine", "pill", 
+  "pills", "dose", "took", "week", "weeks", "month", "months", 
+  "year", "years", "doctor", "patient", "felt", "feel", "lot", "bit",
+  "stop", "stopped", "stopping", "increase", "increased", "increasing",
+  "start", "started", "starting", "dosage", "prescribed", "work", "worked",
+  "normal", "sex", "body", "issue", "issues", "problem", "problems",
+  "life", "experience", "experienced", "symptoms"
+)
+
+# Generate Word Cloud
+set.seed(1234) 
+df %>%
+  unnest_tokens(word, sideEffectsReview) %>%
+  anti_join(stop_words) %>%
+  filter(!word %in% custom_ignore_words) %>%
+  filter(!str_detect(word, "^[0-9]+$")) %>%
+  count(word, sort = TRUE) %>%
+  with(wordcloud(words = word, freq = n, max.words = 60, 
+                 colors = brewer.pal(8, "Dark2"), scale = c(3.5, 0.5)))
+```
+
+**Interpretation:** The dominant terms are not life-threatening emergencies, but rather Lifestyle Burdens: Nausea, Weight Gain, Dizziness, Insomnia, and Libido. This confirms that for chronic conditions, the barriers to adherence are subjective and quality-of-life related.
+
+### Predictive Modeling (Logistic Regression)
+
+Finally, we trained a supervised learning model to test whether a simple lexicon-based sentiment score, derived only from side-effect narratives, can predict overall patient satisfaction.
+
+-   **Outcome (target):** `is_satisfied`, a binary variable indicating high satisfaction (overall rating ≥ 8 vs. \< 8). This threshold captures clearly positive experiences while retaining adequate sample size.
+-   **Primary predictor:** `sentiment_score`, defined for each patient as the difference between the count of positive keywords (for example, “good,” “relief,” “helped,” “happy”) and negative side-effect terms (for example, “nausea,” “dizziness,” “insomnia,” “weight,” “pain”) in `sideEffectsReview`.
+-   **Model choice:** Logistic regression, which is appropriate for a binary outcome and yields interpretable coefficients that quantify how incremental changes in sentiment are associated with the odds of high satisfaction.
+
+We deliberately restrict the model to a single summary feature to ask a focused question: **does the emotional valence of side-effect language alone carry predictive signal**, even without conditioning on drug, indication, or demographic factors?
+
+```{r}
+# 1. Define Sentiment Dictionaries
+neg_terms <- c("nausea", "dizziness", "headache", "pain", "weight", "insomnia", 
+               "tired", "anxiety", "libido", "severe", "vomiting")
+pos_terms <- c("good", "great", "excellent", "best", "relief", "helped", "love", "happy")
+
+# 2. Calculate Sentiment Score per Patient
+ml_data <- df %>%
+  mutate(is_satisfied = if_else(rating >= 8, 1, 0)) %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(word, sideEffectsReview) %>%
+  mutate(val = case_when(
+    word %in% pos_terms ~ 1, 
+    word %in% neg_terms ~ -1, 
+    TRUE ~ 0
+  )) %>%
+  group_by(id, is_satisfied) %>%
+  summarize(score = sum(val), .groups = "drop") %>%
+  right_join(select(mutate(df, id=row_number()), id), by="id") %>%
+  mutate(score = replace_na(score, 0), is_satisfied = replace_na(is_satisfied, 0))
+
+# 3. Train Logistic Regression Model
+model <- glm(is_satisfied ~ score, data = ml_data, family = "binomial")
+
+# 4. Evaluate with ROC Curve
+roc_obj <- roc(ml_data$is_satisfied, predict(model, newdata = ml_data, type = "response"))
+
+par(mar = c(5, 5, 5, 2))
+plot(roc_obj, 
+     main = "",
+     col = "#2980b9", lwd = 4, legacy.axes = TRUE,
+     cex.lab = 1.3, cex.axis = 1.2)
+grid(col = "lightgray", lty = "dotted")
+title(main = "ROC Curve: Sentiment Prediction Model", line = 4, cex.main = 1.0)
+mtext(paste0("AUC = ", round(as.numeric(auc(roc_obj)), 3)), side = 3, line = 3, cex = 0.8, font = 2)
+```
+
+**Result:** The model achieved an Area Under the Curve (AUC) well above 0.5 (random-chance discrimination), indicating that reviews with more positive than negative side-effect language are systematically more likely to belong to highly satisfied patients. The ROC curve (Figure X) shows a consistent trade-off between sensitivity and specificity across thresholds, suggesting that even this simple lexicon-based feature captures clinically meaningful signal.
+
+## Conclusion
+
+**Summary of findings.**
+
+This project successfully transformed unstructured patient narratives into actionable clinical insight. By analyzing 4,143 drug reviews, we demonstrated that:
+
+-   **Subjectivity is key.** The most frequent side-effect terms in patient narratives are not catastrophic events but lifestyle and quality-of-life burdens such as nausea, dizziness, insomnia, weight changes, and libido-related concerns. These “everyday” symptoms dominate the linguistic landscape of chronic therapy.
+-   **Narrative sentiment is predictive.** A simple lexicon-based sentiment score, computed from side-effect reviews alone, achieves ROC performance well above random chance when predicting high overall satisfaction (rating ≥ 8). In other words, patients’ own words about side effects carry enough signal to distinguish satisfied from dissatisfied users without explicitly modeling drug or indication.
+
+**Implications.**
+
+These findings highlight the potential of “digital pharmacovigilance”: continuously mining patient narratives to identify emerging tolerability issues. Similar pipelines could be deployed on electronic health record (EHR) notes or patient portals to automatically flag individuals whose language suggests deteriorating tolerability, prompting early outreach before they silently discontinue life-saving therapies. While the present model uses a deliberately simple sentiment score and does not adjust for drug, indication, or demographics, it establishes a proof of concept that patient text alone can be operationalized as a quantitative signal. Future work could extend this framework with richer representations (for example, embeddings, sequence models) and more comprehensive covariate adjustment.
+
+**Future directions.**
+
+This project establishes a proof-of-concept pipeline showing that patient-generated text contains quantifiable signal relevant to medication satisfaction and tolerability. Several extensions would substantially increase both clinical utility and methodological rigor.
+
+1.  **Richer text representations.** Future models could incorporate transformer-based embeddings (for example, BioClinicalBERT or Med-BERT) to capture contextual nuance beyond simple lexicon scoring. These embeddings would allow the model to differentiate between “nausea improved” versus “nausea worsened,” capturing directionality and modifier structure.
+
+2.  **Multimodal modeling.** Integrating structured covariates such as age, gender, drug class, dose, and indication would enable a more comprehensive regression framework. This would allow quantification of whether linguistic sentiment carries independent predictive value after controlling for clinical context.
+
+3.  **Temporal modeling of patient experience.** Many chronic therapies involve dynamic side-effect profiles over time. Applying temporal NLP or sequence models to longitudinal patient messages, EHR portal communications, or repeated assessments could reveal early-warning linguistic markers for impending discontinuation.
+
+4.  **Generalizability and fairness analysis.** The DrugLib corpus may not fully represent diverse patient populations. Evaluating model performance across demographic subgroups and clinical conditions would ensure robustness and identify potential sources of bias that would matter in a real clinical deployment.
+
+5.  **Prospective validation in clinical workflows.** Ultimately, the value of this approach lies in real-time decision support. Embedding the sentiment-derived risk score into outpatient psychiatry or primary care dashboards could enable proactive outreach. A prospective study could measure whether such alerts reduce missed doses or improve long-term adherence trajectories.
+
+Taken together, these extensions would advance this work from a retrospective text-mining exercise to a scalable digital drug safety surveillance framework capable of supporting precision medication management in clinical practice.
